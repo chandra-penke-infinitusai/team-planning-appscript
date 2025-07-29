@@ -367,6 +367,8 @@ function updatePeopleTimeline() {
     return;
   }
 
+  Browser.msgBox("Info", "HERE!");
+
   const dataRangeProjects = sourceSheetProjects.getDataRange();
   const allDataProjectsRaw = dataRangeProjects.getValues();
 
