@@ -12,12 +12,12 @@
 // IMPORTANT: Configure your JIRA base URL here
 const JIRA_BASE_URL = "https://infinitusai.atlassian.net/browse/";
 
-// Define the terms and their month ranges (1-indexed for months)
+// Define the terms and their date ranges (YYYY-MM-DD)
 const TERMS = [
-  { name: "T1", startMonth: 2, endMonth: 4, color: "#2f75b5" }, // Feb-Apr, Dark Blue
-  { name: "T2", startMonth: 5, endMonth: 7, color: "#4a4e69" }, // May-Jul, Dark Slate Blue
-  { name: "T3", startMonth: 8, endMonth: 10, color: "#3a6b35" }, // Aug-Oct, Dark Forest Green
-  { name: "T4", startMonth: 11, endMonth: 1, color: "#8b0000" } // Nov-Jan (rolls into next year), Dark Red
+  { name: "T1 2025", startDate: "2025-02-03", endDate: "2025-05-04", color: "#2f75b5" }, 
+  { name: "T2 2025", startDate: "2025-05-05", endDate: "2025-08-17", color: "#4a4e69" }, 
+  { name: "T3 2025", startDate: "2025-08-18", endDate: "2025-11-02", color: "#3a6b35" }, 
+  { name: "T4 2024", startDate: "2024-11-03", endDate: "2026-02-01", color: "#8b0000" }
 ];
 
 // Color for customer timeline bars
@@ -96,38 +96,14 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
 
   // Helper function to determine which term a given date falls into
   function getTermForDate(date) {
-    const month = date.getMonth(); // 0-indexed month
-    const year = date.getFullYear();
-
+    date.setHours(0, 0, 0, 0);
     for (const term of TERMS) {
-      let termStartMonth = term.startMonth - 1;
-      let termEndMonth = term.endMonth - 1;
-
-      let termYearStart = year;
-      let termYearEnd = year;
-
-      if (term.name === "T4") {
-        if (month === 10 || month === 11) {
-          termYearEnd = year + 1;
-        } else if (month === 0) {
-          termYearStart = year - 1;
-        } else {
-          continue;
-        }
-      } else if (term.name === "T1" && month === 0) {
-        continue;
-      }
-
-      const termStartDate = new Date(termYearStart, termStartMonth, 1);
-      const termEndDate = new Date(termYearEnd, termEndMonth + 1, 0);
-
+      const termStartDate = new Date(term.startDate);
+      const termEndDate = new Date(term.endDate);
       termStartDate.setHours(0, 0, 0, 0);
       termEndDate.setHours(0, 0, 0, 0);
-      date.setHours(0, 0, 0, 0);
-
       if (date >= termStartDate && date <= termEndDate) {
-        const displayYear = (term.name === "T4" && month === 0) ? year - 1 : year;
-        return { name: term.name, year: displayYear, color: term.color };
+        return { name: term.name, color: term.color };
       }
     }
     return null;
@@ -146,7 +122,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
     const dateIso = sortedDailyDateKeys[i];
     const dayDate = new Date(dateIso);
     const termForDay = getTermForDate(dayDate);
-    const currentTermKey = termForDay ? `${termForDay.name} ${termForDay.year}` : null;
+    const currentTermKey = termForDay ? `${termForDay.name}` : null;
     const currentTermActualColor = termForDay ? termForDay.color : null;
     const currentDayColIndex = dailyDateToSheetColMap.get(dateIso);
 
@@ -532,10 +508,13 @@ function updatePeopleTimeline() {
   // Populate Customer Rows
   currentRow = populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, currentRow, 1); // fixedColumnIndex is 1 for 'Person' column
 
-  return;
+  // Set column widths of all other columns except the first one to 30
+  for (let i = 2; i <= totalHeaderColumns; i++) {
+    ganttSheet.setColumnWidth(i, 20);
+  }
 
   // Adjust freezing to include customer rows
-  //ganttSheet.setFrozenRows(currentRow - 1); // 2 header rows + number of packed customer rows
+  ganttSheet.setFrozenRows(currentRow - 1); // 2 header rows + number of packed customer rows
 
   // --- Populate Person/Project Rows ---
   const projectColors = new Map();
@@ -672,11 +651,7 @@ function updatePeopleTimeline() {
   });
 
   // --- 6. Formatting and Adjustments ---
-  //ganttSheet.setFrozenColumns(1);
-
-  for (let i = 1; i < totalHeaderColumns; i++) {
-    ganttSheet.setColumnWidth(i + 1, 2); // Daily column width
-  }
+  ganttSheet.setFrozenColumns(1);
 
   ganttSheet.autoResizeColumn(1);
 
