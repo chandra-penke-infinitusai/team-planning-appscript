@@ -50,7 +50,7 @@ function getStartOfWeek(date) {
 function getEndOfWeek(date) {
   const startOfWeek = getStartOfWeek(date);
   const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 4); // Add 4 days to Monday to get Friday
+  endOfWeek.setDate(startOfWeek.getDate() + 6); // Add 6 days to Monday to get Sunday
   return endOfWeek;
 }
 
@@ -79,17 +79,15 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
     const dayOfWeek = currentDate.getDay(); // 0 (Sunday) to 6 (Saturday)
 
     // Only process workdays (Monday to Friday)
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) { // 1 for Monday, 5 for Friday
-      dailyDateToSheetColMap.set(currentDate.toISOString().slice(0, 10), currentSheetColIndex);
+    dailyDateToSheetColMap.set(currentDate.toISOString().slice(0, 10), currentSheetColIndex);
 
-      if (dayOfWeek === 1) { // If it's Monday, it's the start of a new week header
-        const endOfWeek = getEndOfWeek(currentDate);
-        const dateString = `${Utilities.formatDate(currentDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd")}-${Utilities.formatDate(endOfWeek, spreadsheet.getSpreadsheetTimeZone(), "MM/dd")}`;
-        weeklyHeaderStrings.push(dateString);
-        weeklyHeaderStartColIndices.push(currentSheetColIndex);
-      }
-      currentSheetColIndex++;
+    if (dayOfWeek === 1) { // If it's Monday, it's the start of a new week header
+      const endOfWeek = getEndOfWeek(currentDate);
+      const dateString = `${Utilities.formatDate(currentDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd")}-${Utilities.formatDate(endOfWeek, spreadsheet.getSpreadsheetTimeZone(), "MM/dd")}`;
+      weeklyHeaderStrings.push(dateString);
+      weeklyHeaderStartColIndices.push(currentSheetColIndex);
     }
+    currentSheetColIndex++;
     currentDate.setDate(currentDate.getDate() + 1); // Move to the next day
   }
 
@@ -197,7 +195,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   // Apply weekly header merges, values and backgrounds to row 2
   for (let i = 0; i < weeklyHeaderStrings.length; i++) {
     const startCol = weeklyHeaderStartColIndices[i];
-    const endCol = Math.min(startCol + 4, totalHeaderColumns); // Each week is 5 work days
+    const endCol = Math.min(startCol + 6, totalHeaderColumns);
     const numColsToMerge = endCol - startCol + 1;
 
     if (numColsToMerge > 0) {
@@ -255,7 +253,6 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   return { dailyDateToSheetColMap: dailyDateToSheetColMap, totalDataColumns: totalDataColumns, totalHeaderColumns: totalHeaderColumns };
 }
 
-
 function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, startRow, fixedColumnIndex) {
   let currentRow = startRow;
   if (customerData.length === 0) {
@@ -292,8 +289,7 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
     }
   });
 
-  packedCustomerRows.forEach((rowCustomers, rowIndex) => {
-    ganttSheet.getRange(currentRow, fixedColumnIndex).setValue(rowCustomers[0].name);
+  packedCustomerRows.forEach((rowCustomers,) => {
     ganttSheet.getRange(currentRow, fixedColumnIndex).setBackground("#FFFFFF");
 
     ganttSheet.getRange(currentRow, fixedColumnIndex + 1, 1, totalHeaderColumns - fixedColumnIndex).setBackground("#cccccc");
@@ -305,6 +301,12 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
       let startSheetCol = dailyDateToSheetColMap.get(projectStartDate.toISOString().slice(0, 10));
       let endSheetCol = dailyDateToSheetColMap.get(projectEndDate.toISOString().slice(0, 10));
 
+      // if startSheetCol or endSheetCol is undefined then show an error and return
+      if (startSheetCol === undefined || endSheetCol === undefined) {
+        Browser.msgBox("Mapping is wrong for customer: " + customer.name + " with data ISO string: " + projectStartDate.toISOString().slice(0, 10) + " or " + projectEndDate.toISOString().slice(0, 10));
+        return;
+      }
+
       if (typeof startSheetCol !== 'number' || startSheetCol < fixedColumnIndex + 1) {
         startSheetCol = fixedColumnIndex + 1;
       }
@@ -312,7 +314,7 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
         endSheetCol = totalHeaderColumns;
       }
       if (startSheetCol > endSheetCol) {
-          endSheetCol = startSheetCol;
+        endSheetCol = startSheetCol;
       }
 
       const numColsToColor = endSheetCol - startSheetCol + 1;
@@ -366,8 +368,6 @@ function updatePeopleTimeline() {
     Browser.msgBox("Error", "No data found in the 'People' sheet (excluding header). Please add some project data.", Browser.Buttons.OK);
     return;
   }
-
-  Browser.msgBox("Info", "HERE!");
 
   const dataRangeProjects = sourceSheetProjects.getDataRange();
   const allDataProjectsRaw = dataRangeProjects.getValues();
@@ -423,7 +423,6 @@ function updatePeopleTimeline() {
     if (isNaN(projectEndDate.getTime())) projectEndDate = null;
     else projectEndDate.setHours(0, 0, 0, 0);
 
-
     if (key) {
       projectDetailsMap.set(key, {
         summary: summary,
@@ -434,6 +433,7 @@ function updatePeopleTimeline() {
       });
     }
   });
+
 
   // --- 2. Prepare Gantt Chart Sheet ---
   let ganttSheet = spreadsheet.getSheetByName(TIMELINE_SHEET_NAME_PEOPLE);
@@ -519,17 +519,20 @@ function updatePeopleTimeline() {
   }
 
   // --- 4. Generate Headers using common function ---
-  const headerInfo = generateTimelineHeaders(ganttSheet, minOverallTimelineDate, maxOverallTimelineDate, 2); // 2 because 'Person' is column 1
+  const headerInfo = generateTimelineHeaders(ganttSheet, minOverallTimelineDate, maxOverallTimelineDate, 1); // 2 because 'Person' is column 1
   const dailyDateToSheetColMap = headerInfo.dailyDateToSheetColMap;
   const totalHeaderColumns = headerInfo.totalHeaderColumns; // Total columns for header rows
 
   Logger.log("Daily Date to Sheet Column Map: " + JSON.stringify(Array.from(dailyDateToSheetColMap.entries())));
+
 
   // --- 5. Populate Chart Rows (Customers then People) ---
   let currentRow = 3; // Start populating from the third row (after 2 header rows)
 
   // Populate Customer Rows
   currentRow = populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, currentRow, 1); // fixedColumnIndex is 1 for 'Person' column
+
+  return;
 
   // Adjust freezing to include customer rows
   //ganttSheet.setFrozenRows(currentRow - 1); // 2 header rows + number of packed customer rows
@@ -612,7 +615,7 @@ function updatePeopleTimeline() {
           endSheetCol = totalHeaderColumns;
         }
         if (startSheetCol > endSheetCol) {
-            endSheetCol = startSheetCol;
+          endSheetCol = startSheetCol;
         }
 
         const numColsToColor = endSheetCol - startSheetCol + 1;
@@ -663,8 +666,8 @@ function updatePeopleTimeline() {
     const endRowForPerson = currentRow - 1;
 
     if (endRowForPerson > startRowForPerson) {
-      ganttSheet.getRange(startRowForPerson, 1, endRowForPerson - startRowForPerson + 1, 1).merge();
-      ganttSheet.getRange(startRowForPerson, 1).setVerticalAlignment("middle");
+      // ganttSheet.getRange(startRowForPerson, 1, endRowForPerson - startRowForPerson + 1, 1).merge();
+      // ganttSheet.getRange(startRowForPerson, 1).setVerticalAlignment("middle");
     }
   });
 
@@ -964,7 +967,7 @@ function updateProjectTimelines() {
       endSheetCol = totalHeaderColumns;
     }
     if (startSheetCol > endSheetCol) {
-        endSheetCol = startSheetCol;
+      endSheetCol = startSheetCol;
     }
 
     const numColsToColor = endSheetCol - startSheetCol + 1;
@@ -1034,7 +1037,7 @@ function updateProjectTimelines() {
  */
 function updateAllTimelines() {
   updatePeopleTimeline();
-  updateProjectTimelines();
+  //updateProjectTimelines();
 }
 
 
@@ -1044,6 +1047,6 @@ function updateAllTimelines() {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Team Planning')
-      .addItem('Update All Timelines', 'updateAllTimelines')
-      .addToUi();
+    .addItem('Update All Timelines', 'updateAllTimelines')
+    .addToUi();
 }
