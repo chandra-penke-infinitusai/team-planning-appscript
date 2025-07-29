@@ -2,7 +2,7 @@
  * Generates a Gantt chart in a new Google Sheet tab based on project data.
  * The source sheet "People" is expected to have columns: Person, Project (which now holds the JIRA Key), Start Date, End Date.
  * The source sheet "Projects" is expected to have columns: Key, Summary, Status, Priority, Due Date, Start Date, Epic Name.
- * The source sheet "Customers" is expected to have columns: Name, Start Date, End Date.
+ * The source sheet "Milestones" is expected to have columns: Name, Start Date, End Date.
  * The Gantt chart will display cells per day (work-week days) with weekly headers and term headers.
  * The project Summary in the merged cell will be a hyperlink to the JIRA issue (based on the Key).
  * Projects for the same person/customer will be placed on the same row if their dates do not overlap.
@@ -25,7 +25,7 @@ const CUSTOMER_ROW_COLOR = "#E0FFFF"; // Light Cyan
 
 const SOURCE_SHEET_NAME_PEOPLE = "People";
 const SOURCE_SHEET_NAME_PROJECTS = "Projects";
-const SOURCE_SHEET_NAME_CUSTOMERS = "Customers";
+const SOURCE_SHEET_NAME_CUSTOMERS = "Milestones";
 const TIMELINE_SHEET_NAME_PROJECTS = "Timeline (Projects)";
 const TIMELINE_SHEET_NAME_PEOPLE = "Timeline (People)";
 
@@ -683,7 +683,7 @@ function updatePeopleTimeline() {
 }
 
 /**
- * Reads customer data from the "Customers" sheet.
+ * Reads customer data from the "Milestones" sheet.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet The Customers sheet.
  * @returns {Array<Object>} An array of customer objects with name, startDate, and endDate.
  */
