@@ -202,6 +202,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
 
     if (numColsToMerge > 0) {
       const weekRange = sheet.getRange(2, startCol, 1, numColsToMerge);
+      weekRange.breakApart();
       weekRange.merge();
       weekRange.setValue(weeklyHeaderStrings[i]);
       weekRange.setHorizontalAlignment("center");
@@ -225,6 +226,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   // Apply term merges and formatting to row 1
   termMergeRanges.forEach(range => {
     const termRange = sheet.getRange(1, range.startCol, 1, range.endCol - range.startCol + 1);
+    termRange.breakApart();
     termRange.merge();
     termRange.setValue(range.text);
     termRange.setHorizontalAlignment("center");
@@ -317,6 +319,7 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
 
       if (numColsToColor > 0) {
         const rangeToColor = ganttSheet.getRange(currentRow, startSheetCol, 1, numColsToColor);
+        rangeToColor.breakApart();
         rangeToColor.merge();
         rangeToColor.setBackground(CUSTOMER_ROW_COLOR);
         rangeToColor.setBorder(true, true, true, true, true, true);
@@ -614,6 +617,7 @@ function updatePeopleTimeline() {
 
         if (numColsToColor > 0) {
           const rangeToColor = ganttSheet.getRange(currentRow, startSheetCol, 1, numColsToColor);
+          rangeToColor.breakApart();
           rangeToColor.merge();
           rangeToColor.setBackground(projectColor);
           rangeToColor.setBorder(true, true, true, true, true, true); // Apply border to filled cells
@@ -965,6 +969,7 @@ function updateProjectTimelines() {
 
     if (numColsToColor > 0) {
       const rangeToColor = ganttSheet.getRange(currentRow, startSheetCol, 1, numColsToColor);
+      rangeToColor.breakApart();
       rangeToColor.merge();
       rangeToColor.setBackground(projectColor);
       rangeToColor.setBorder(true, true, true, true, true, true);
