@@ -12,22 +12,100 @@
 // IMPORTANT: Configure your JIRA base URL here
 const JIRA_BASE_URL = "https://infinitusai.atlassian.net/browse/";
 
-// Define the terms and their date ranges (YYYY-MM-DD)
-const TERMS = [
-  { name: "T1 2025", startDate: "2025-02-03", endDate: "2025-05-04", color: "#2f75b5" }, 
-  { name: "T2 2025", startDate: "2025-05-05", endDate: "2025-08-17", color: "#4a4e69" }, 
-  { name: "T3 2025", startDate: "2025-08-18", endDate: "2025-11-02", color: "#3a6b35" }, 
-  { name: "T4 2024", startDate: "2024-11-03", endDate: "2026-02-01", color: "#8b0000" }
-];
-
 // Color for customer timeline bars
 const CUSTOMER_ROW_COLOR = "#E0FFFF"; // Light Cyan
 
 const SOURCE_SHEET_NAME_PEOPLE = "People";
 const SOURCE_SHEET_NAME_PROJECTS = "Projects";
 const SOURCE_SHEET_NAME_CUSTOMERS = "Milestones";
+const SOURCE_SHEET_NAME_TERMS = "Terms";
 const TIMELINE_SHEET_NAME_PROJECTS = "Timeline (Projects)";
 const TIMELINE_SHEET_NAME_PEOPLE = "Timeline (People)";
+
+/**
+ * Reads terms data from the "Terms" sheet.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet The Terms sheet.
+ * @returns {Array<Object>} An array of term objects with name, startDate, endDate, and color.
+ */
+function getTermsData(sheet) {
+  const dataRange = sheet.getDataRange();
+  const allData = dataRange.getValues();
+  const terms = [];
+
+  if (allData.length < 2) {
+    Logger.log("Error: No data found in the 'Terms' sheet (excluding header).");
+    Browser.msgBox("Error", "No data found in the 'Terms' sheet (excluding header). Please add term data.", Browser.Buttons.OK);
+    return [];
+  }
+
+  const headerRow = allData[0];
+  const dataRows = allData.slice(1);
+
+  const nameCol = headerRow.indexOf("Name");
+  const startCol = headerRow.indexOf("Start Date");
+  const endCol = headerRow.indexOf("End Date");
+  const colorCol = headerRow.indexOf("Color");
+
+  if (nameCol === -1 || startCol === -1 || endCol === -1) {
+    Logger.log("Error: Missing one or more required columns (Name, Start Date, End Date) in the 'Terms' sheet.");
+    Browser.msgBox("Error", "Missing one or more required columns (Name, Start Date, End Date) in the 'Terms' sheet. Please check your column headers.", Browser.Buttons.OK);
+    return [];
+  }
+
+  dataRows.forEach(row => {
+    const name = row[nameCol];
+    let startDate = row[startCol];
+    let endDate = row[endCol];
+    const color = colorCol !== -1 ? row[colorCol] : "#2f75b5"; // Default color if not specified
+
+    // Convert date strings to Date objects if they're strings
+    if (typeof startDate === 'string') {
+      startDate = new Date(startDate);
+    }
+    if (typeof endDate === 'string') {
+      endDate = new Date(endDate);
+    }
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      Logger.log(`Warning: Term '${name}' has invalid dates. Skipping.`);
+      return;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    if (endDate < startDate) {
+      Logger.log(`Warning: Term '${name}' end date is before start date. Skipping.`);
+      return;
+    }
+
+    terms.push({
+      name: name,
+      startDate: startDate.toISOString().slice(0, 10), // Convert to YYYY-MM-DD format
+      endDate: endDate.toISOString().slice(0, 10), // Convert to YYYY-MM-DD format
+      color: color
+    });
+  });
+
+  return terms;
+}
+
+/**
+ * Gets the terms data from the Terms sheet or shows an error if sheet doesn't exist.
+ * @returns {Array<Object>} An array of term objects.
+ */
+function getTerms() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const termsSheet = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_TERMS);
+  
+  if (termsSheet) {
+    return getTermsData(termsSheet);
+  } else {
+    Logger.log("Error: Terms sheet not found.");
+    Browser.msgBox("Error", `Terms sheet '${SOURCE_SHEET_NAME_TERMS}' not found. Please create a Terms sheet with columns: Name, Start Date, End Date, Color.`, Browser.Buttons.OK);
+    return [];
+  }
+}
 
 /**
  * Helper function to get the start of the week (Monday) for a given date.
@@ -97,7 +175,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   // Helper function to determine which term a given date falls into
   function getTermForDate(date) {
     date.setHours(0, 0, 0, 0);
-    for (const term of TERMS) {
+    for (const term of getTerms()) { // Use getTerms() here
       const termStartDate = new Date(term.startDate);
       const termEndDate = new Date(term.endDate);
       termStartDate.setHours(0, 0, 0, 0);
@@ -374,8 +452,8 @@ function updatePeopleTimeline() {
   const keyColProjects = headerRowProjects.indexOf("Key");
   const summaryColProjects = headerRowProjects.indexOf("Summary");
   const epicNameColProjects = headerRowProjects.indexOf("Epic Name");
-  const projectStartDateColProjects = headerRowProjects.indexOf("Start Date");
-  const projectDueDateColProjects = headerRowProjects.indexOf("Due Date");
+  const projectStartDateColProjects = headerRowProjects.indexOf("Start date");
+  const projectDueDateColProjects = headerRowProjects.indexOf("Due date");
   const statusColProjects = headerRowProjects.indexOf("Status");
 
   if (keyColProjects === -1 || summaryColProjects === -1 || statusColProjects === -1) {
@@ -761,8 +839,8 @@ function updateProjectTimelines() {
   const dataRowsProjects = allDataProjectsRaw.slice(1);
   const keyColProjects = headerRowProjects.indexOf("Key");
   const summaryColProjects = headerRowProjects.indexOf("Summary");
-  const startDateColProjects = headerRowProjects.indexOf("Start Date");
-  const dueDateColProjects = headerRowProjects.indexOf("Due Date");
+  const startDateColProjects = headerRowProjects.indexOf("Start date");
+  const dueDateColProjects = headerRowProjects.indexOf("Due date");
   const epicNameColProjects = headerRowProjects.indexOf("Epic Name");
   const statusColProjects = headerRowProjects.indexOf("Status");
 
