@@ -1,7 +1,6 @@
 /**
  * Generates a Gantt chart in a new Google Sheet tab based on project data.
- * The source sheet "People" is expected to have columns: Person, Project (which now holds the JIRA Key), Start Date, End Date.
- * The source sheet "Projects" is expected to have columns: Key, Summary, Status, Priority, Due Date, Start Date, Epic Name.
+ * The source sheet "People" is expected to have columns: Person, Project (JIRA Key), Start Date, End Date, Summary.
  * The source sheet "Milestones" is expected to have columns: Name, Start Date, End Date.
  * The Gantt chart will display cells per day (work-week days) with weekly headers and term headers.
  * The project Summary in the merged cell will be a hyperlink to the JIRA issue (based on the Key).
@@ -15,11 +14,9 @@ const JIRA_BASE_URL = "https://infinitusai.atlassian.net/browse/";
 // Color for customer timeline bars
 const CUSTOMER_ROW_COLOR = "#E0FFFF"; // Light Cyan
 
-const SOURCE_SHEET_NAME_PEOPLE = "People";
-const SOURCE_SHEET_NAME_PROJECTS = "Projects";
+const SOURCE_SHEET_NAME_PEOPLE = "Combined";
 const SOURCE_SHEET_NAME_CUSTOMERS = "Milestones";
 const SOURCE_SHEET_NAME_TERMS = "Terms";
-const TIMELINE_SHEET_NAME_PROJECTS = "Timeline (Projects)";
 const TIMELINE_SHEET_NAME_PEOPLE = "Timeline (People)";
 
 /**
@@ -406,17 +403,11 @@ function updatePeopleTimeline() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
   const sourceSheetPeople = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_PEOPLE);
-  const sourceSheetProjects = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_PROJECTS);
   const sourceSheetCustomers = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_CUSTOMERS);
 
   if (!sourceSheetPeople) {
     Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_PEOPLE}' not found.`);
     Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_PEOPLE}' not found.`, Browser.Buttons.OK);
-    return;
-  }
-  if (!sourceSheetProjects) {
-    Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_PROJECTS}' not found.`);
-    Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_PROJECTS}' not found.`, Browser.Buttons.OK);
     return;
   }
   if (!sourceSheetCustomers) {
@@ -434,16 +425,14 @@ function updatePeopleTimeline() {
     return;
   }
 
-  const dataRangeProjects = sourceSheetProjects.getDataRange();
-  const allDataProjectsRaw = dataRangeProjects.getValues();
+  const dataRangeCustomers = sourceSheetCustomers.getDataRange();
+  const allDataCustomers = dataRangeCustomers.getValues();
 
-  if (allDataProjectsRaw.length < 2) {
-    Logger.log("Error: No data found in the 'Projects' sheet (excluding header).");
-    Browser.msgBox("Error", "No data found in the 'Projects' sheet (excluding header). Please add some project data.", Browser.Buttons.OK);
+  if (allDataCustomers.length < 2) {
+    Logger.log("Error: No data found in the 'Customers' sheet (excluding header).");
+    Browser.msgBox("Error", "No data found in the 'Customers' sheet (excluding header). Please add some customer data.", Browser.Buttons.OK);
     return;
   }
-
-  const customerData = getCustomerData(sourceSheetCustomers);
 
   const headerRowPeople = allDataPeople[0];
   const dataRowsPeople = allDataPeople.slice(1);
@@ -451,6 +440,7 @@ function updatePeopleTimeline() {
   const projectKeyColPeople = headerRowPeople.indexOf("Project");
   const startColPeople = headerRowPeople.indexOf("Start Date");
   const endColPeople = headerRowPeople.indexOf("End Date");
+  const summaryColPeople = headerRowPeople.indexOf("Summary");
 
   if (personCol === -1 || projectKeyColPeople === -1 || startColPeople === -1 || endColPeople === -1) {
     Logger.log("Error: Missing one or more required columns (Person, Project, Start Date, End Date) in the 'People' sheet.");
@@ -458,47 +448,18 @@ function updatePeopleTimeline() {
     return;
   }
 
-  const headerRowProjects = allDataProjectsRaw[0];
-  const dataRowsProjectsRaw = allDataProjectsRaw.slice(1);
-  const keyColProjects = headerRowProjects.indexOf("Key");
-  const summaryColProjects = headerRowProjects.indexOf("Summary");
-  const epicNameColProjects = headerRowProjects.indexOf("Epic Name");
-  const projectStartDateColProjects = headerRowProjects.indexOf("Start date");
-  const projectDueDateColProjects = headerRowProjects.indexOf("Due date");
-  const statusColProjects = headerRowProjects.indexOf("Status");
+  const headerRowCustomers = allDataCustomers[0];
+  const nameColCustomers = headerRowCustomers.indexOf("Name");
+  const startColCustomers = headerRowCustomers.indexOf("Start Date");
+  const endColCustomers = headerRowCustomers.indexOf("End Date");
 
-  if (keyColProjects === -1 || summaryColProjects === -1 || statusColProjects === -1) {
-    Logger.log("Error: Missing one or more required columns (Key, Summary, Status) in the 'Projects' sheet.");
-    Browser.msgBox("Error", "Missing one or more required columns (Key, Summary, Status) in the 'Projects' sheet. Please check your column headers.", Browser.Buttons.OK);
+  if (nameColCustomers === -1 || startColCustomers === -1 || endColCustomers === -1) {
+    Logger.log("Error: Missing one or more required columns (Name, Start Date, End Date) in the 'Customers' sheet.");
+    Browser.msgBox("Error", "Missing one or more required columns (Name, Start Date, End Date) in the 'Customers' sheet. Please check your column headers.", Browser.Buttons.OK);
     return;
   }
 
-  const projectDetailsMap = new Map();
-  dataRowsProjectsRaw.forEach(row => {
-    const key = row[keyColProjects];
-    const summary = row[summaryColProjects];
-    const epicName = row[epicNameColProjects] || null;
-    let projectStartDate = new Date(row[projectStartDateColProjects]);
-    let projectEndDate = new Date(row[projectDueDateColProjects]);
-    const status = row[statusColProjects];
-
-    if (isNaN(projectStartDate.getTime())) projectStartDate = null;
-    else projectStartDate.setHours(0, 0, 0, 0);
-
-    if (isNaN(projectEndDate.getTime())) projectEndDate = null;
-    else projectEndDate.setHours(0, 0, 0, 0);
-
-    if (key) {
-      projectDetailsMap.set(key, {
-        summary: summary,
-        epicName: epicName,
-        projectStartDate: projectStartDate,
-        projectEndDate: projectEndDate,
-        status: status
-      });
-    }
-  });
-
+  const customerData = getCustomerData(sourceSheetCustomers);
 
   // --- 2. Prepare Gantt Chart Sheet ---
   let ganttSheet = spreadsheet.getSheetByName(TIMELINE_SHEET_NAME_PEOPLE);
@@ -531,20 +492,10 @@ function updatePeopleTimeline() {
     const jiraKeyFromPeople = row[projectKeyColPeople];
     let startDate = new Date(row[startColPeople]);
     let endDate = new Date(row[endColPeople]);
+    const summary = row[summaryColPeople];
 
     if (!isNaN(startDate.getTime())) startDate.setHours(0, 0, 0, 0);
     if (!isNaN(endDate.getTime())) endDate.setHours(0, 0, 0, 0);
-
-    const projectDetail = projectDetailsMap.has(jiraKeyFromPeople) ? projectDetailsMap.get(jiraKeyFromPeople) : { summary: jiraKeyFromPeople, epicName: null, projectStartDate: null, projectEndDate: null, status: null };
-
-    if (isNaN(startDate.getTime()) && projectDetail.projectStartDate) {
-      startDate = projectDetail.projectStartDate;
-      Logger.log(`Project key '${jiraKeyFromPeople}' for '${person}' missing Start Date in People sheet. Using Projects sheet Start Date: ${startDate}`);
-    }
-    if (isNaN(endDate.getTime()) && projectDetail.projectEndDate) {
-      endDate = projectDetail.projectEndDate;
-      Logger.log(`Project key '${jiraKeyFromPeople}' for '${person}' missing End Date in People sheet. Using Projects sheet Due Date: ${endDate}`);
-    }
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       Logger.log(`Warning: Still missing valid dates for project key '${jiraKeyFromPeople}' by '${person}'. Skipping this row.`);
@@ -569,11 +520,9 @@ function updatePeopleTimeline() {
 
     projectsByPerson.get(person).push({
       key: jiraKeyFromPeople,
-      summary: projectDetail.summary,
-      epicName: projectDetail.epicName,
+      summary: summary,
       startDate: startDate,
-      endDate: endDate,
-      status: projectDetail.status
+      endDate: endDate
     });
   });
 
@@ -667,7 +616,7 @@ function updatePeopleTimeline() {
       ganttSheet.getRange(currentRow, 2, 1, totalHeaderColumns - 1).setBackground("#cccccc"); // Light grey for empty cells
 
       rowProjects.forEach(projectData => {
-        const projectColor = getProjectColor(projectData.epicName || projectData.key);
+        const projectColor = getProjectColor(projectData.key);
 
         const projectStartDate = projectData.startDate;
         const projectEndDate = projectData.endDate;
@@ -703,17 +652,8 @@ function updatePeopleTimeline() {
             jiraUrl = JIRA_BASE_URL + projectData.key;
           }
 
-          // Apply strike-through and checkmark if status is 'Done'
-          if (!projectData.status) {
-            rangeToColor.setValue(projectDisplayName);
-          } else if (projectData.status.toLowerCase() === 'done') {
-            const richTextValue = SpreadsheetApp.newRichTextValue()
-              .setText(`✅ ${projectDisplayName}`) // Add checkmark
-              .setLinkUrl(jiraUrl)
-              .setTextStyle(SpreadsheetApp.newTextStyle().setStrikethrough(true).build()) // Apply strikethrough
-              .build();
-            rangeToColor.setRichTextValue(richTextValue);
-          } else if (jiraUrl) {
+          // Set the project display name
+          if (jiraUrl) {
             const richTextValue = SpreadsheetApp.newRichTextValue()
               .setText(projectDisplayName)
               .setLinkUrl(jiraUrl)
@@ -815,295 +755,11 @@ function getCustomerData(sheet) {
 
 
 /**
- * Generates a project timeline using the "Projects" sheet as the source.
- * Each project will be on its own row, with its duration indicated by merged colored cells.
- * The merged cell will contain the project Summary and a hyperlink to its JIRA Key.
- */
-function updateProjectTimelines() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-
-  // --- 1. Get Source Data from Projects sheet ---
-  const sourceSheetProjects = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_PROJECTS);
-  const sourceSheetCustomers = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_CUSTOMERS);
-
-  if (!sourceSheetProjects) {
-    Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_PROJECTS}' not found.`);
-    Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_PROJECTS}' not found.`, Browser.Buttons.OK);
-    return;
-  }
-  if (!sourceSheetCustomers) {
-    Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_CUSTOMERS}' not found.`);
-    Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_CUSTOMERS}' not found.`, Browser.Buttons.OK);
-    return;
-  }
-
-  const dataRangeProjects = sourceSheetProjects.getDataRange();
-  const allDataProjectsRaw = dataRangeProjects.getValues();
-
-  if (allDataProjectsRaw.length < 2) {
-    Logger.log("Error: No data found in the 'Projects' sheet (excluding header).");
-    Browser.msgBox("Error", "No data found in the 'Projects' sheet (excluding header). Please add some project data.", Browser.Buttons.OK);
-    return;
-  }
-
-  const headerRowProjects = allDataProjectsRaw[0];
-  const dataRowsProjects = allDataProjectsRaw.slice(1);
-  const keyColProjects = headerRowProjects.indexOf("Key");
-  const summaryColProjects = headerRowProjects.indexOf("Summary");
-  const startDateColProjects = headerRowProjects.indexOf("Start date");
-  const dueDateColProjects = headerRowProjects.indexOf("Due date");
-  const epicNameColProjects = headerRowProjects.indexOf("Epic Name");
-  const statusColProjects = headerRowProjects.indexOf("Status");
-
-  if (keyColProjects === -1 || summaryColProjects === -1 || statusColProjects === -1) {
-    Logger.log("Error: Missing one or more required columns (Key, Summary, Status) in the 'Projects' sheet.");
-    Browser.msgBox("Error", "Missing one or more required columns (Key, Summary, Status) in the 'Projects' sheet. Please check your column headers.", Browser.Buttons.OK);
-    return;
-  }
-
-  // --- Collect People by Project Key for the Project Timeline ---
-  const peopleByProjectKey = new Map();
-  const sourceSheetPeople = spreadsheet.getSheetByName("People");
-  if (sourceSheetPeople) {
-    const dataRangePeople = sourceSheetPeople.getDataRange();
-    const allDataPeople = dataRangePeople.getValues();
-    if (allDataPeople.length > 1) {
-      const headerRowPeople = allDataPeople[0];
-      const dataRowsPeople = allDataPeople.slice(1);
-      const personCol = headerRowPeople.indexOf("Person");
-      const projectKeyColPeople = headerRowPeople.indexOf("Project");
-
-      if (personCol !== -1 && projectKeyColPeople !== -1) {
-        dataRowsPeople.forEach(row => {
-          const person = row[personCol];
-          const projectKey = row[projectKeyColPeople];
-          if (person && projectKey) {
-            if (!peopleByProjectKey.has(projectKey)) {
-              peopleByProjectKey.set(projectKey, []);
-            }
-            peopleByProjectKey.get(projectKey).push(person);
-          }
-        });
-      }
-    }
-  }
-
-  // Get customer data
-  const customerData = getCustomerData(sourceSheetCustomers);
-
-  // --- 2. Prepare Gantt Chart Sheet ---
-  let ganttSheet = spreadsheet.getSheetByName(TIMELINE_SHEET_NAME_PROJECTS);
-  if (ganttSheet) {
-    if (ganttSheet.getMaxRows() > 0 && ganttSheet.getMaxColumns() > 0) {
-      ganttSheet.getRange(1, 1, ganttSheet.getMaxRows(), ganttSheet.getMaxColumns()).breakApart();
-    }
-    ganttSheet.setFrozenRows(0);
-    ganttSheet.setFrozenColumns(0);
-    ganttSheet.clearContents();
-    ganttSheet.clearFormats();
-    ganttSheet.clearConditionalFormatRules();
-  } else {
-    ganttSheet = spreadsheet.insertSheet(TIMELINE_SHEET_NAME_PROJECTS);
-  }
-
-  // --- 3. First Pass: Determine Overall Date Range from VALID projects ---
-  let minOverallStartDateFound = new Date(8640000000000000);
-  let maxOverallEndDateFound = new Date(-8640000000000000);
-
-  customerData.forEach(customer => {
-    if (customer.startDate < minOverallStartDateFound) minOverallStartDateFound = customer.startDate;
-    if (customer.endDate > maxOverallEndDateFound) maxOverallEndDateFound = customer.endDate;
-  });
-
-  const allProjectsData = [];
-
-  dataRowsProjects.forEach(row => {
-    const key = row[keyColProjects];
-    const summary = row[summaryColProjects];
-    let startDate = new Date(row[startDateColProjects]);
-    let endDate = new Date(row[dueDateColProjects]);
-    const epicName = row[epicNameColProjects] || null;
-    const status = row[statusColProjects];
-
-    if (!isNaN(startDate.getTime())) {
-      startDate.setHours(0, 0, 0, 0);
-    }
-    if (!isNaN(endDate.getTime())) {
-      endDate.setHours(0, 0, 0, 0);
-    }
-
-    if (!isNaN(startDate.getTime()) && startDate < minOverallStartDateFound) {
-      minOverallStartDateFound = startDate;
-    }
-    if (!isNaN(endDate.getTime()) && endDate > maxOverallEndDateFound) {
-      maxOverallEndDateFound = endDate;
-    }
-
-    allProjectsData.push({
-      key: key,
-      summary: summary,
-      epicName: epicName,
-      startDate: startDate,
-      endDate: endDate,
-      status: status
-    });
-  });
-
-  if (minOverallStartDateFound.getTime() === new Date(8640000000000000).getTime()) {
-    const today = new Date();
-    minOverallStartDateFound = new Date(today.getFullYear(), today.getMonth(), 1);
-    maxOverallEndDateFound = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    Logger.log("No valid project dates found. Defaulting timeline range to current month.");
-  }
-
-  allProjectsData.forEach(project => {
-    if (isNaN(project.startDate.getTime())) {
-      project.startDate = new Date(minOverallStartDateFound);
-      Logger.log(`Project '${project.key}' missing Start Date. Defaulting to overall min start date: ${project.startDate}`);
-    }
-    if (isNaN(project.endDate.getTime())) {
-      project.endDate = new Date(maxOverallEndDateFound);
-      Logger.log(`Project '${project.key}' missing Due Date. Defaulting to overall max end date: ${project.endDate}`);
-    }
-
-    if (project.endDate < project.startDate) {
-      Logger.log(`Warning: Adjusted end date is before start date for project '${project.key}'. Setting end date to start date.`);
-      project.endDate = new Date(project.startDate);
-    }
-  });
-
-  if (allProjectsData.length === 0 && customerData.length === 0) {
-    Logger.log("No valid project or customer data found to create the timeline.");
-    Browser.msgBox("Info", "No valid project or customer data found to create the timeline.", Browser.Buttons.OK);
-    return;
-  }
-
-  allProjectsData.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
-
-  // --- 4. Generate Headers using common function ---
-  const headerInfo = generateTimelineHeaders(ganttSheet, minOverallStartDateFound, maxOverallEndDateFound, 1); // 1 because no fixed column
-  const dailyDateToSheetColMap = headerInfo.dailyDateToSheetColMap;
-  const totalHeaderColumns = headerInfo.totalHeaderColumns;
-
-  // --- Populate Customer Rows ---
-  let currentRow = populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, 3, 1); // fixedColumnIndex is 1 for 'Project' column (which is now the first data column)
-
-  // Adjust freezing to include customer rows
-  ganttSheet.setFrozenRows(currentRow - 1); // 2 header rows + number of packed customer rows
-
-  // --- 5. Populate Chart Rows (Customers then Projects) ---
-
-  const projectColors = new Map();
-  const availableColors = [
-    "#ADD8E6", "#90EE90", "#FFDAB9", "#B0E0E6", "#DDA0DD", "#F0E68C",
-    "#87CEEB", "#F5DEB3", "#C0C0C0", "#FFA07A", "#20B2AA", "#E6E6FA",
-    "#FFB6C1", "#AFEEEE", "#F08080", "#DA70D6", "#FFEFD5", "#FFE4B5", "#7FFFD4"
-  ];
-  let colorIndex = 0;
-
-  function getProjectColor(projectIdentifier) {
-    if (!projectColors.has(projectIdentifier)) {
-      projectColors.set(projectIdentifier, availableColors[colorIndex % availableColors.length]);
-      colorIndex++;
-    }
-    return projectColors.get(projectIdentifier);
-  }
-
-  allProjectsData.forEach(projectData => {
-    ganttSheet.getRange(currentRow, 1).setValue(projectData.summary); // Project Summary in column 1
-    ganttSheet.getRange(currentRow, 1).setBackground("#FFFFFF"); // White fill for Project Summary column
-
-    ganttSheet.getRange(currentRow, 1, 1, totalHeaderColumns).setBackground("#cccccc"); // Light grey for empty cells
-
-    const colorIdentifier = projectData.epicName || projectData.key;
-    const projectColor = getProjectColor(colorIdentifier);
-
-    const projectStartDate = projectData.startDate;
-    const projectEndDate = projectData.endDate;
-
-    let startSheetCol = dailyDateToSheetColMap.get(projectStartDate.toISOString().slice(0, 10));
-    let endSheetCol = dailyDateToSheetColMap.get(projectEndDate.toISOString().slice(0, 10));
-
-    if (typeof startSheetCol !== 'number' || startSheetCol < 1) {
-      startSheetCol = 1;
-    }
-    if (typeof endSheetCol !== 'number' || endSheetCol < 1) {
-      endSheetCol = totalHeaderColumns;
-    }
-    if (startSheetCol > endSheetCol) {
-      endSheetCol = startSheetCol;
-    }
-
-    const numColsToColor = endSheetCol - startSheetCol + 1;
-
-    if (numColsToColor > 0) {
-      const rangeToColor = ganttSheet.getRange(currentRow, startSheetCol, 1, numColsToColor);
-      rangeToColor.breakApart();
-      rangeToColor.merge();
-      rangeToColor.setBackground(projectColor);
-      rangeToColor.setBorder(true, true, true, true, true, true);
-      rangeToColor.setWrap(true); // Wrap text in merged cells
-
-      let cellText = projectData.summary;
-      const people = peopleByProjectKey.get(projectData.key);
-      if (people && people.length > 0) {
-        cellText += ` (${people.join(', ')})`;
-      } else {
-        cellText += ` (Unassigned)`;
-      }
-
-      let jiraUrl = null;
-      if (projectData.key) {
-        jiraUrl = JIRA_BASE_URL + projectData.key;
-      }
-
-      if (projectData.status && projectData.status.toLowerCase() === 'done') {
-        const richTextValue = SpreadsheetApp.newRichTextValue()
-          .setText(`✅ ${cellText}`)
-          .setLinkUrl(jiraUrl)
-          .setTextStyle(SpreadsheetApp.newTextStyle().setStrikethrough(true).build())
-          .build();
-        rangeToColor.setRichTextValue(richTextValue);
-      } else if (jiraUrl) {
-        const richTextValue = SpreadsheetApp.newRichTextValue()
-          .setText(cellText)
-          .setLinkUrl(jiraUrl)
-          .build();
-        rangeToColor.setRichTextValue(richTextValue);
-      } else {
-        rangeToColor.setValue(cellText);
-      }
-
-      rangeToColor.setHorizontalAlignment("center");
-      rangeToColor.setVerticalAlignment("middle");
-    }
-    currentRow++;
-  });
-
-  // --- 6. Formatting and Adjustments ---
-  ganttSheet.setFrozenColumns(1);
-
-  for (let i = 1; i < totalHeaderColumns; i++) {
-    ganttSheet.setColumnWidth(i + 1, 2); // Daily column width
-  }
-
-  ganttSheet.autoResizeColumn(1);
-
-  ganttSheet.getRange(1, 1, 2, totalHeaderColumns).setHorizontalAlignment("center");
-
-  if (ganttSheet.getMaxRows() > 0) {
-    ganttSheet.setRowHeights(1, currentRow - 1, 50);
-  }
-}
-
-/**
- * Updates both the Person Timeline and Project Timeline sheets.
+ * Updates the Person Timeline sheet.
  */
 function updateAllTimelines() {
   updatePeopleTimeline();
-  //updateProjectTimelines();
 }
-
 
 /**
  * Adds custom menus to the Google Sheet to easily run the Gantt chart generators.
