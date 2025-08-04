@@ -218,6 +218,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
         weekRange.setFontColor("#000000");
         weekRange.setFontWeight("normal");
       }
+      weekRange.setFontSize(10); // Set font size for weekly header
     }
   }
 
@@ -231,6 +232,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
     termRange.setVerticalAlignment("middle");
     termRange.setBackground(range.color);
     termRange.setFontColor("#FFFFFF");
+    termRange.setFontSize(10); // Set font size for term header
   });
 
   sheet.setFrozenRows(2); // Freeze both header rows
@@ -329,6 +331,7 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
         rangeToColor.setHorizontalAlignment("center");
         rangeToColor.setVerticalAlignment("middle");
         rangeToColor.setWrap(true); // Wrap text in merged cells
+        rangeToColor.setFontSize(7); // Set font size to 7 for milestones
       }
     });
     currentRow++;
@@ -444,7 +447,7 @@ function updatePeopleTimeline(sourceSheetName, destinationSheetName) {
     });
   });
 
-  if (projectsByPerson.size === 0 && customerData.length === 0) {
+  if (projectsByPerson.size === 0 && milestoneData.length === 0) {
     Logger.log("No valid project or customer data found to create the Gantt chart.");
     Browser.msgBox("Info", "No valid project or customer data found to create the Gantt chart.", Browser.Buttons.OK);
     return;
@@ -605,7 +608,9 @@ function updatePeopleTimeline(sourceSheetName, destinationSheetName) {
   ganttSheet.getRange(1, 1, 2, totalHeaderColumns).setHorizontalAlignment("center");
 
   if (ganttSheet.getMaxRows() > 0) {
-    ganttSheet.setRowHeights(1, currentRow - 1, 50);
+      // After all header formatting, set row heights for header rows
+    ganttSheet.setRowHeights(1, 2, 25);
+    ganttSheet.setRowHeights(3, currentRow - 1, 50);
   }
 }
 
