@@ -19,39 +19,29 @@ const CUSTOMER_ROW_COLOR = "#E0FFFF"; // Light Cyan
 const TERMS_DATA = [
   {
     name: "T1 2025",
-    startDate: "2025-02-03",
-    endDate: "2025-05-04",
+    startDate: new Date("2025-02-03"),
+    endDate: new Date("2025-05-04"),
     color: "#FF6B6B" // Red
   },
   {
     name: "T2 2025", 
-    startDate: "2025-05-05",
-    endDate: "2025-08-17",
+    startDate: new Date("2025-05-05"),
+    endDate: new Date("2025-08-18"),
     color: "#4ECDC4" // Teal
   },
   {
     name: "T3 2025",
-    startDate: "2025-08-18", 
-    endDate: "2025-11-02",
+    startDate: new Date("2025-08-18"), 
+    endDate: new Date("2025-11-02"),
     color: "#45B7D1" // Blue
   },
   {
     name: "T4 2024",
-    startDate: "2024-11-03",
-    endDate: "2026-02-01",
+    startDate: new Date("2024-11-03"),
+    endDate: new Date("2026-02-01"),
     color: "#96CEB4" // Green
   }
 ];
-
-/**
- * Gets the hardcoded terms data.
- * @returns {Array<Object>} An array of term objects with name, startDate, endDate, and color.
- */
-function getTerms() {
-  return TERMS_DATA;
-}
-
-
 
 /**
  * Helper function to get the start of the week (Monday) for a given date.
@@ -90,8 +80,6 @@ function getEndOfWeek(date) {
 function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFixedColumnIndex) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
-  const weeklyHeaderStrings = []; // Stores "MM/DD-MM/DD" for each week
-  const weeklyHeaderStartColIndices = []; // Stores the starting sheet column index for each week's header
   const dailyDateToSheetColMap = new Map(); // Maps YYYY-MM-DD to its sheet column index
   let currentSheetColIndex = firstFixedColumnIndex + 1; // Current column for daily data (starts after fixed column)
 
@@ -100,17 +88,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
 
   let currentDate = new Date(firstChartDate);
   while (currentDate <= lastChartDate) {
-    const dayOfWeek = currentDate.getDay(); // 0 (Sunday) to 6 (Saturday)
-
-    // Only process workdays (Monday to Friday)
     dailyDateToSheetColMap.set(currentDate.toISOString().slice(0, 10), currentSheetColIndex);
-
-    if (dayOfWeek === 1) { // If it's Monday, it's the start of a new week header
-      const endOfWeek = getEndOfWeek(currentDate);
-      const dateString = `${Utilities.formatDate(currentDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd")}-${Utilities.formatDate(endOfWeek, spreadsheet.getSpreadsheetTimeZone(), "MM/dd")}`;
-      weeklyHeaderStrings.push(dateString);
-      weeklyHeaderStartColIndices.push(currentSheetColIndex);
-    }
     currentSheetColIndex++;
     currentDate.setDate(currentDate.getDate() + 1); // Move to the next day
   }
@@ -120,13 +98,8 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
 
   // Helper function to determine which term a given date falls into
   function getTermForDate(date) {
-    date.setHours(0, 0, 0, 0);
-    for (const term of getTerms()) { // Use getTerms() here
-      const termStartDate = new Date(term.startDate);
-      const termEndDate = new Date(term.endDate);
-      termStartDate.setHours(0, 0, 0, 0);
-      termEndDate.setHours(0, 0, 0, 0);
-      if (date >= termStartDate && date <= termEndDate) {
+    for (const term of TERMS_DATA) {
+      if (date >= term.startDate && date <= term.endDate) {
         return { name: term.name, color: term.color };
       }
     }
@@ -200,17 +173,10 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
     const dayOfWeek = dayDate.getDay();
 
     if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Weekdays block
-      let startCol = dailyDateToSheetColMap.get(dateIso);
-      let endIdx = i;
-      while (
-        endIdx + 1 < sortedDailyDateKeys.length &&
-        new Date(sortedDailyDateKeys[endIdx + 1]).getDay() >= 1 &&
-        new Date(sortedDailyDateKeys[endIdx + 1]).getDay() <= 5
-      ) {
-        endIdx++;
-      }
-      let endCol = dailyDateToSheetColMap.get(sortedDailyDateKeys[endIdx]);
-      let numColsToMerge = endCol - startCol + 1;
+      const startCol = dailyDateToSheetColMap.get(dateIso);
+      const endIdx = i + 5 - dayOfWeek;
+      const endCol = dailyDateToSheetColMap.get(sortedDailyDateKeys[endIdx]);
+      const numColsToMerge = endCol - startCol + 1;
       if (numColsToMerge > 0) {
         const weekRange = sheet.getRange(2, startCol, 1, numColsToMerge);
         weekRange.breakApart();
@@ -240,17 +206,10 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
       i = endIdx + 1;
     } else if (dayOfWeek === 6 || dayOfWeek === 0) { // Weekend block
       // Merge Sat+Sun if both exist, otherwise just one cell
-      let startCol = dailyDateToSheetColMap.get(dateIso);
-      let endIdx = i;
-      while (
-        endIdx + 1 < sortedDailyDateKeys.length &&
-        (new Date(sortedDailyDateKeys[endIdx + 1]).getDay() === 6 ||
-         new Date(sortedDailyDateKeys[endIdx + 1]).getDay() === 0)
-      ) {
-        endIdx++;
-      }
-      let endCol = dailyDateToSheetColMap.get(sortedDailyDateKeys[endIdx]);
-      let numColsToMerge = endCol - startCol + 1;
+      const startCol = dailyDateToSheetColMap.get(dateIso);
+      const endIdx = dayOfWeek === 6 && i < sortedDailyDateKeys.length - 1 ? i + 1 : i;
+      const endCol = dailyDateToSheetColMap.get(sortedDailyDateKeys[endIdx]);
+      const numColsToMerge = endCol - startCol + 1;
       if (numColsToMerge > 0) {
         const weekendRange = sheet.getRange(2, startCol, 1, numColsToMerge);
         weekendRange.breakApart();
@@ -302,7 +261,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   return { dailyDateToSheetColMap: dailyDateToSheetColMap, totalDataColumns: totalDataColumns, totalHeaderColumns: totalHeaderColumns };
 }
 
-function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, startRow, fixedColumnIndex) {
+function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, startRow) {
   let currentRow = startRow;
   if (customerData.length === 0) {
     return currentRow;
@@ -339,9 +298,7 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
   });
 
   packedCustomerRows.forEach((rowCustomers,) => {
-    ganttSheet.getRange(currentRow, fixedColumnIndex).setBackground("#FFFFFF");
-
-    ganttSheet.getRange(currentRow, fixedColumnIndex + 1, 1, totalHeaderColumns - fixedColumnIndex).setBackground("#cccccc");
+    ganttSheet.getRange(currentRow, 2, 1, totalHeaderColumns - 1).setBackground("#cccccc"); // Light grey for empty cells
 
     rowCustomers.forEach(customer => {
       const projectStartDate = customer.startDate;
@@ -356,12 +313,6 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
         return;
       }
 
-      if (typeof startSheetCol !== 'number' || startSheetCol < fixedColumnIndex + 1) {
-        startSheetCol = fixedColumnIndex + 1;
-      }
-      if (typeof endSheetCol !== 'number' || endSheetCol < fixedColumnIndex + 1) {
-        endSheetCol = totalHeaderColumns;
-      }
       if (startSheetCol > endSheetCol) {
         endSheetCol = startSheetCol;
       }
@@ -512,7 +463,7 @@ function updatePeopleTimeline(sourceSheetName, destinationSheetName) {
   let currentRow = 3; // Start populating from the third row (after 2 header rows)
 
   // Populate Milestone Rows
-  currentRow = populateCustomerRows(ganttSheet, milestoneData, dailyDateToSheetColMap, totalHeaderColumns, currentRow, 1); // fixedColumnIndex is 1 for 'Person' column
+  currentRow = populateCustomerRows(ganttSheet, milestoneData, dailyDateToSheetColMap, totalHeaderColumns, currentRow); // fixedColumnIndex is 1 for 'Person' column
 
   // Set column widths of all other columns except the first one to 30
   for (let i = 2; i <= totalHeaderColumns; i++) {
@@ -637,14 +588,6 @@ function updatePeopleTimeline(sourceSheetName, destinationSheetName) {
       });
       currentRow++;
     });
-
-    const startRowForPerson = personStartRows.get(person);
-    const endRowForPerson = currentRow - 1;
-
-    if (endRowForPerson > startRowForPerson) {
-      // ganttSheet.getRange(startRowForPerson, 1, endRowForPerson - startRowForPerson + 1, 1).merge();
-      // ganttSheet.getRange(startRowForPerson, 1).setVerticalAlignment("middle");
-    }
   });
 
   // --- 6. Formatting and Adjustments ---
