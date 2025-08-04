@@ -2,6 +2,7 @@
  * Generates a Gantt chart in a new Google Sheet tab based on project data.
  * The source sheet "Combined" is expected to have columns: Person, Project (JIRA Key), Start Date, End Date, Summary.
  * Milestones are identified by rows where Person = 'Milestone' in the Combined sheet.
+ * Terms are hardcoded with predefined colors and date ranges.
  * The Gantt chart will display cells per day (work-week days) with weekly headers and term headers.
  * The project Summary in the merged cell will be a hyperlink to the JIRA issue (based on the Key).
  * Projects for the same person/customer will be placed on the same row if their dates do not overlap.
@@ -14,105 +15,43 @@ const JIRA_BASE_URL = "https://infinitusai.atlassian.net/browse/";
 // Color for customer timeline bars
 const CUSTOMER_ROW_COLOR = "#E0FFFF"; // Light Cyan
 
-const SOURCE_SHEET_NAME_PEOPLE = "Combined";
-const SOURCE_SHEET_NAME_TERMS = "Terms";
-const TIMELINE_SHEET_NAME_PEOPLE = "Timeline (People)";
+// Hardcoded term data
+const TERMS_DATA = [
+  {
+    name: "T1 2025",
+    startDate: "2025-02-03",
+    endDate: "2025-05-04",
+    color: "#FF6B6B" // Red
+  },
+  {
+    name: "T2 2025", 
+    startDate: "2025-05-05",
+    endDate: "2025-08-17",
+    color: "#4ECDC4" // Teal
+  },
+  {
+    name: "T3 2025",
+    startDate: "2025-08-18", 
+    endDate: "2025-11-02",
+    color: "#45B7D1" // Blue
+  },
+  {
+    name: "T4 2024",
+    startDate: "2024-11-03",
+    endDate: "2026-02-01",
+    color: "#96CEB4" // Green
+  }
+];
 
 /**
- * Reads terms data from the "Terms" sheet.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet The Terms sheet.
+ * Gets the hardcoded terms data.
  * @returns {Array<Object>} An array of term objects with name, startDate, endDate, and color.
  */
-function getTermsData(sheet) {
-  const dataRange = sheet.getDataRange();
-  const allData = dataRange.getValues();
-  const terms = [];
-
-  if (allData.length < 2) {
-    Logger.log("Error: No data found in the 'Terms' sheet (excluding header).");
-    Browser.msgBox("Error", "No data found in the 'Terms' sheet (excluding header). Please add term data.", Browser.Buttons.OK);
-    return [];
-  }
-
-  const headerRow = allData[0];
-  const dataRows = allData.slice(1);
-
-  const nameCol = headerRow.indexOf("Name");
-  const startCol = headerRow.indexOf("Start Date");
-  const endCol = headerRow.indexOf("End Date");
-
-  if (nameCol === -1 || startCol === -1 || endCol === -1) {
-    Logger.log("Error: Missing one or more required columns (Name, Start Date, End Date) in the 'Terms' sheet.");
-    Browser.msgBox("Error", "Missing one or more required columns (Name, Start Date, End Date) in the 'Terms' sheet. Please check your column headers.", Browser.Buttons.OK);
-    return [];
-  }
-
-  dataRows.forEach((row, rowIndex) => {
-    const name = row[nameCol];
-    let startDate = row[startCol];
-    let endDate = row[endCol];
-    
-    // Get the background color from the term name cell
-    const nameCell = sheet.getRange(rowIndex + 2, nameCol + 1); // +2 because rowIndex is 0-based and we skip header, +1 because sheet columns are 1-based
-    const backgroundColor = nameCell.getBackground();
-    
-    // Convert Google Sheets color to hex if needed
-    let color = backgroundColor;
-    if (backgroundColor && backgroundColor !== '#ffffff' && backgroundColor !== '#FFFFFF') {
-      color = backgroundColor;
-    } else {
-      // Default color if no background is set
-      color = getTermColor(name);
-    }
-
-    // Convert date strings to Date objects if they're strings
-    if (typeof startDate === 'string') {
-      startDate = new Date(startDate);
-    }
-    if (typeof endDate === 'string') {
-      endDate = new Date(endDate);
-    }
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      Logger.log(`Warning: Term '${name}' has invalid dates. Skipping.`);
-      return;
-    }
-
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-
-    if (endDate < startDate) {
-      Logger.log(`Warning: Term '${name}' end date is before start date. Skipping.`);
-      return;
-    }
-
-    terms.push({
-      name: name,
-      startDate: startDate.toISOString().slice(0, 10), // Convert to YYYY-MM-DD format
-      endDate: endDate.toISOString().slice(0, 10), // Convert to YYYY-MM-DD format
-      color: color
-    });
-  });
-
-  return terms;
-}
-
-/**
- * Gets the terms data from the Terms sheet or shows an error if sheet doesn't exist.
- * @returns {Array<Object>} An array of term objects.
- */
 function getTerms() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const termsSheet = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_TERMS);
-  
-  if (termsSheet) {
-    return getTermsData(termsSheet);
-  } else {
-    Logger.log("Error: Terms sheet not found.");
-    Browser.msgBox("Error", `Terms sheet '${SOURCE_SHEET_NAME_TERMS}' not found. Please create a Terms sheet with columns: Name, Start Date, End Date. Set the background color of the Name cells to define term colors.`, Browser.Buttons.OK);
-    return [];
-  }
+  return TERMS_DATA;
 }
+
+
 
 /**
  * Helper function to get the start of the week (Monday) for a given date.
@@ -398,14 +337,14 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
 }
 
 
-function updatePeopleTimeline() {
+function updatePeopleTimeline(sourceSheetName, destinationSheetName) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
-  const sourceSheetCombined = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_PEOPLE);
+  const sourceSheetCombined = spreadsheet.getSheetByName(sourceSheetName);
 
   if (!sourceSheetCombined) {
-    Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_PEOPLE}' not found.`);
-    Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_PEOPLE}' not found.`, Browser.Buttons.OK);
+    Logger.log(`Error: Source sheet '${sourceSheetName}' not found.`);
+    Browser.msgBox("Error", `Source sheet '${sourceSheetName}' not found.`, Browser.Buttons.OK);
     return;
   }
 
@@ -435,7 +374,7 @@ function updatePeopleTimeline() {
   const milestoneData = getMilestoneData(sourceSheetCombined);
 
   // --- 2. Prepare Gantt Chart Sheet ---
-  let ganttSheet = spreadsheet.getSheetByName(TIMELINE_SHEET_NAME_PEOPLE);
+  let ganttSheet = spreadsheet.getSheetByName(destinationSheetName);
   if (ganttSheet) {
     if (ganttSheet.getMaxRows() > 0 && ganttSheet.getMaxColumns() > 0) {
       ganttSheet.getRange(1, 1, ganttSheet.getMaxRows(), ganttSheet.getMaxColumns()).breakApart();
@@ -446,7 +385,7 @@ function updatePeopleTimeline() {
     ganttSheet.clearFormats();
     ganttSheet.clearConditionalFormatRules();
   } else {
-    ganttSheet = spreadsheet.insertSheet(TIMELINE_SHEET_NAME_PEOPLE);
+    ganttSheet = spreadsheet.insertSheet(destinationSheetName);
   }
 
   // --- 3. Determine Date Range and Collect Unique Projects/People ---
@@ -740,12 +679,8 @@ function getMilestoneData(sheet) {
   return milestones;
 }
 
-
-/**
- * Updates the Person Timeline sheet.
- */
 function updateAllTimelines() {
-  updatePeopleTimeline();
+  updatePeopleTimeline("Combined", "Timeline (People)");
 }
 
 /**
