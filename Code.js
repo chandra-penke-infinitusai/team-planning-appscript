@@ -678,17 +678,3 @@ function getMilestoneData(sheet) {
 
   return milestones;
 }
-
-function updateAllTimelines() {
-  updatePeopleTimeline("Combined", "Timeline (People)");
-}
-
-/**
- * Adds custom menus to the Google Sheet to easily run the Gantt chart generators.
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Team Planning')
-    .addItem('Update All Timelines', 'updateAllTimelines')
-    .addToUi();
-}
