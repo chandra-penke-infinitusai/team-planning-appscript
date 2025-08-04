@@ -1,7 +1,7 @@
 /**
  * Generates a Gantt chart in a new Google Sheet tab based on project data.
- * The source sheet "People" is expected to have columns: Person, Project (JIRA Key), Start Date, End Date, Summary.
- * The source sheet "Milestones" is expected to have columns: Name, Start Date, End Date.
+ * The source sheet "Combined" is expected to have columns: Person, Project (JIRA Key), Start Date, End Date, Summary.
+ * Milestones are identified by rows where Person = 'Milestone' in the Combined sheet.
  * The Gantt chart will display cells per day (work-week days) with weekly headers and term headers.
  * The project Summary in the merged cell will be a hyperlink to the JIRA issue (based on the Key).
  * Projects for the same person/customer will be placed on the same row if their dates do not overlap.
@@ -15,7 +15,6 @@ const JIRA_BASE_URL = "https://infinitusai.atlassian.net/browse/";
 const CUSTOMER_ROW_COLOR = "#E0FFFF"; // Light Cyan
 
 const SOURCE_SHEET_NAME_PEOPLE = "Combined";
-const SOURCE_SHEET_NAME_CUSTOMERS = "Milestones";
 const SOURCE_SHEET_NAME_TERMS = "Terms";
 const TIMELINE_SHEET_NAME_PEOPLE = "Timeline (People)";
 
@@ -402,64 +401,38 @@ function populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, 
 function updatePeopleTimeline() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
-  const sourceSheetPeople = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_PEOPLE);
-  const sourceSheetCustomers = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_CUSTOMERS);
+  const sourceSheetCombined = spreadsheet.getSheetByName(SOURCE_SHEET_NAME_PEOPLE);
 
-  if (!sourceSheetPeople) {
+  if (!sourceSheetCombined) {
     Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_PEOPLE}' not found.`);
     Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_PEOPLE}' not found.`, Browser.Buttons.OK);
     return;
   }
-  if (!sourceSheetCustomers) {
-    Logger.log(`Error: Source sheet '${SOURCE_SHEET_NAME_CUSTOMERS}' not found.`);
-    Browser.msgBox("Error", `Source sheet '${SOURCE_SHEET_NAME_CUSTOMERS}' not found.`, Browser.Buttons.OK);
+
+  const dataRangeCombined = sourceSheetCombined.getDataRange();
+  const allDataCombined = dataRangeCombined.getValues();
+
+  if (allDataCombined.length < 2) {
+    Logger.log("Error: No data found in the 'Combined' sheet (excluding header).");
+    Browser.msgBox("Error", "No data found in the 'Combined' sheet (excluding header). Please add some project data.", Browser.Buttons.OK);
     return;
   }
 
-  const dataRangePeople = sourceSheetPeople.getDataRange();
-  const allDataPeople = dataRangePeople.getValues();
-
-  if (allDataPeople.length < 2) {
-    Logger.log("Error: No data found in the 'People' sheet (excluding header).");
-    Browser.msgBox("Error", "No data found in the 'People' sheet (excluding header). Please add some project data.", Browser.Buttons.OK);
-    return;
-  }
-
-  const dataRangeCustomers = sourceSheetCustomers.getDataRange();
-  const allDataCustomers = dataRangeCustomers.getValues();
-
-  if (allDataCustomers.length < 2) {
-    Logger.log("Error: No data found in the 'Customers' sheet (excluding header).");
-    Browser.msgBox("Error", "No data found in the 'Customers' sheet (excluding header). Please add some customer data.", Browser.Buttons.OK);
-    return;
-  }
-
-  const headerRowPeople = allDataPeople[0];
-  const dataRowsPeople = allDataPeople.slice(1);
-  const personCol = headerRowPeople.indexOf("Person");
-  const projectKeyColPeople = headerRowPeople.indexOf("Project");
-  const startColPeople = headerRowPeople.indexOf("Start Date");
-  const endColPeople = headerRowPeople.indexOf("End Date");
-  const summaryColPeople = headerRowPeople.indexOf("Summary");
+  const headerRowCombined = allDataCombined[0];
+  const dataRowsCombined = allDataCombined.slice(1);
+  const personCol = headerRowCombined.indexOf("Person");
+  const projectKeyColPeople = headerRowCombined.indexOf("Project");
+  const startColPeople = headerRowCombined.indexOf("Start Date");
+  const endColPeople = headerRowCombined.indexOf("End Date");
+  const summaryColPeople = headerRowCombined.indexOf("Summary");
 
   if (personCol === -1 || projectKeyColPeople === -1 || startColPeople === -1 || endColPeople === -1) {
-    Logger.log("Error: Missing one or more required columns (Person, Project, Start Date, End Date) in the 'People' sheet.");
-    Browser.msgBox("Error", "Missing one or more required columns (Person, Project, Start Date, End Date) in the 'People' sheet. Please check your column headers.", Browser.Buttons.OK);
+    Logger.log("Error: Missing one or more required columns (Person, Project, Start Date, End Date) in the 'Combined' sheet.");
+    Browser.msgBox("Error", "Missing one or more required columns (Person, Project, Start Date, End Date) in the 'Combined' sheet. Please check your column headers.", Browser.Buttons.OK);
     return;
   }
 
-  const headerRowCustomers = allDataCustomers[0];
-  const nameColCustomers = headerRowCustomers.indexOf("Name");
-  const startColCustomers = headerRowCustomers.indexOf("Start Date");
-  const endColCustomers = headerRowCustomers.indexOf("End Date");
-
-  if (nameColCustomers === -1 || startColCustomers === -1 || endColCustomers === -1) {
-    Logger.log("Error: Missing one or more required columns (Name, Start Date, End Date) in the 'Customers' sheet.");
-    Browser.msgBox("Error", "Missing one or more required columns (Name, Start Date, End Date) in the 'Customers' sheet. Please check your column headers.", Browser.Buttons.OK);
-    return;
-  }
-
-  const customerData = getCustomerData(sourceSheetCustomers);
+  const milestoneData = getMilestoneData(sourceSheetCombined);
 
   // --- 2. Prepare Gantt Chart Sheet ---
   let ganttSheet = spreadsheet.getSheetByName(TIMELINE_SHEET_NAME_PEOPLE);
@@ -480,15 +453,21 @@ function updatePeopleTimeline() {
   let minOverallTimelineDate = new Date(8640000000000000);
   let maxOverallTimelineDate = new Date(-8640000000000000);
 
-  customerData.forEach(customer => {
-    if (customer.startDate < minOverallTimelineDate) minOverallTimelineDate = customer.startDate;
-    if (customer.endDate > maxOverallTimelineDate) maxOverallTimelineDate = customer.endDate;
+  milestoneData.forEach(milestone => {
+    if (milestone.startDate < minOverallTimelineDate) minOverallTimelineDate = milestone.startDate;
+    if (milestone.endDate > maxOverallTimelineDate) maxOverallTimelineDate = milestone.endDate;
   });
 
   const projectsByPerson = new Map();
 
-  dataRowsPeople.forEach(row => {
+  dataRowsCombined.forEach(row => {
     const person = row[personCol];
+    
+    // Skip milestone rows as they are handled separately
+    if (person === 'Milestone') {
+      return;
+    }
+    
     const jiraKeyFromPeople = row[projectKeyColPeople];
     let startDate = new Date(row[startColPeople]);
     let endDate = new Date(row[endColPeople]);
@@ -543,8 +522,8 @@ function updatePeopleTimeline() {
   // --- 5. Populate Chart Rows (Customers then People) ---
   let currentRow = 3; // Start populating from the third row (after 2 header rows)
 
-  // Populate Customer Rows
-  currentRow = populateCustomerRows(ganttSheet, customerData, dailyDateToSheetColMap, totalHeaderColumns, currentRow, 1); // fixedColumnIndex is 1 for 'Person' column
+  // Populate Milestone Rows
+  currentRow = populateCustomerRows(ganttSheet, milestoneData, dailyDateToSheetColMap, totalHeaderColumns, currentRow, 1); // fixedColumnIndex is 1 for 'Person' column
 
   // Set column widths of all other columns except the first one to 30
   for (let i = 2; i <= totalHeaderColumns; i++) {
@@ -692,35 +671,43 @@ function updatePeopleTimeline() {
 }
 
 /**
- * Reads customer data from the "Milestones" sheet.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet The Customers sheet.
- * @returns {Array<Object>} An array of customer objects with name, startDate, and endDate.
+ * Reads milestone data from the "Combined" sheet where Person = 'Milestone'.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet The Combined sheet.
+ * @returns {Array<Object>} An array of milestone objects with name, startDate, and endDate.
  */
-function getCustomerData(sheet) {
+function getMilestoneData(sheet) {
   const dataRange = sheet.getDataRange();
   const allData = dataRange.getValues();
-  const customers = [];
+  const milestones = [];
 
   if (allData.length < 2) {
-    Logger.log("No data found in the 'Customers' sheet (excluding header).");
-    return customers;
+    Logger.log("No data found in the 'Combined' sheet (excluding header).");
+    return milestones;
   }
 
   const headerRow = allData[0];
   const dataRows = allData.slice(1);
 
-  const nameCol = headerRow.indexOf("Name");
+  const personCol = headerRow.indexOf("Person");
+  const summaryCol = headerRow.indexOf("Summary");
   const startCol = headerRow.indexOf("Start Date");
   const endCol = headerRow.indexOf("End Date");
 
-  if (nameCol === -1 || startCol === -1 || endCol === -1) {
-    Logger.log("Error: Missing one or more required columns (Name, Start Date, End Date) in the 'Customers' sheet.");
-    Browser.msgBox("Error", "Missing one or more required columns (Name, Start Date, End Date) in the 'Customers' sheet. Please check your column headers.", Browser.Buttons.OK);
-    return customers;
+  if (personCol === -1 || summaryCol === -1 || startCol === -1 || endCol === -1) {
+    Logger.log("Error: Missing one or more required columns (Person, Summary, Start Date, End Date) in the 'Combined' sheet.");
+    Browser.msgBox("Error", "Missing one or more required columns (Person, Summary, Start Date, End Date) in the 'Combined' sheet. Please check your column headers.", Browser.Buttons.OK);
+    return milestones;
   }
 
   dataRows.forEach(row => {
-    const name = row[nameCol];
+    const person = row[personCol];
+    
+    // Only process rows where Person = 'Milestone'
+    if (person !== 'Milestone') {
+      return;
+    }
+
+    const name = row[summaryCol];
     let startDate = new Date(row[startCol]);
     let endDate = new Date(row[endCol]);
 
@@ -730,27 +717,27 @@ function getCustomerData(sheet) {
     if (isNaN(endDate.getTime())) endDate = null;
     else endDate.setHours(0, 0, 0, 0);
 
-    // Basic validation and fallback for customer dates
+    // Basic validation and fallback for milestone dates
     if (!startDate && !endDate) {
-      Logger.log(`Warning: Customer '${name}' has no valid start or end dates. Skipping.`);
+      Logger.log(`Warning: Milestone '${name}' has no valid start or end dates. Skipping.`);
       return;
     }
     if (!startDate) startDate = new Date(endDate);
     if (!endDate) endDate = new Date(startDate);
 
     if (endDate < startDate) {
-      Logger.log(`Warning: Customer '${name}' end date is before start date. Adjusting end date to start date.`);
+      Logger.log(`Warning: Milestone '${name}' end date is before start date. Adjusting end date to start date.`);
       endDate.setDate(startDate.getDate());
     }
 
-    customers.push({
+    milestones.push({
       name: name,
       startDate: startDate,
       endDate: endDate
     });
   });
 
-  return customers;
+  return milestones;
 }
 
 
