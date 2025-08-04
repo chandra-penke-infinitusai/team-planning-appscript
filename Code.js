@@ -193,32 +193,79 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
 
 
   // Apply weekly header merges, values and backgrounds to row 2
-  for (let i = 0; i < weeklyHeaderStrings.length; i++) {
-    const startCol = weeklyHeaderStartColIndices[i];
-    const endCol = Math.min(startCol + 6, totalHeaderColumns);
-    const numColsToMerge = endCol - startCol + 1;
+  let i = 0;
+  while (i < sortedDailyDateKeys.length) {
+    const dateIso = sortedDailyDateKeys[i];
+    const dayDate = new Date(dateIso);
+    const dayOfWeek = dayDate.getDay();
 
-    if (numColsToMerge > 0) {
-      const weekRange = sheet.getRange(2, startCol, 1, numColsToMerge);
-      weekRange.breakApart();
-      weekRange.merge();
-      weekRange.setValue(weeklyHeaderStrings[i]);
-      weekRange.setHorizontalAlignment("center");
-      weekRange.setVerticalAlignment("middle");
-
-      // Set background color for the date row (Row 2) dynamically based on term color
-      const weekMonday = new Date(sortedDailyDateKeys[weeklyHeaderStartColIndices[i] - (firstFixedColumnIndex + 1)]); // Get Monday's date string
-      const termForWeek = getTermForDate(weekMonday);
-      if (termForWeek && termForWeek.color) {
-        weekRange.setBackground(termForWeek.color);
-        weekRange.setFontColor("#FFFFFF"); // White text for contrast
-        weekRange.setFontWeight("bold"); // Make font bold
-      } else {
-        weekRange.setBackground("#D3D3D3"); // Light grey fallback
-        weekRange.setFontColor("#000000");
-        weekRange.setFontWeight("normal");
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Weekdays block
+      let startCol = dailyDateToSheetColMap.get(dateIso);
+      let endIdx = i;
+      while (
+        endIdx + 1 < sortedDailyDateKeys.length &&
+        new Date(sortedDailyDateKeys[endIdx + 1]).getDay() >= 1 &&
+        new Date(sortedDailyDateKeys[endIdx + 1]).getDay() <= 5
+      ) {
+        endIdx++;
       }
-      weekRange.setFontSize(10); // Set font size for weekly header
+      let endCol = dailyDateToSheetColMap.get(sortedDailyDateKeys[endIdx]);
+      let numColsToMerge = endCol - startCol + 1;
+      if (numColsToMerge > 0) {
+        const weekRange = sheet.getRange(2, startCol, 1, numColsToMerge);
+        weekRange.breakApart();
+        weekRange.merge();
+        // Label with week range
+        const weekStartDate = new Date(sortedDailyDateKeys[i]);
+        const weekEndDate = new Date(sortedDailyDateKeys[endIdx]);
+        const weekHeaderString =
+          Utilities.formatDate(weekStartDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd") + "-" +
+          Utilities.formatDate(weekEndDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd");
+        weekRange.setValue(weekHeaderString);
+        weekRange.setHorizontalAlignment("center");
+        weekRange.setVerticalAlignment("middle");
+        // Set background color for the date row (Row 2) dynamically based on term color
+        const termForWeek = getTermForDate(dayDate);
+        if (termForWeek && termForWeek.color) {
+          weekRange.setBackground(termForWeek.color);
+          weekRange.setFontColor("#FFFFFF"); // White text for contrast
+          weekRange.setFontWeight("bold"); // Make font bold
+        } else {
+          weekRange.setBackground("#D3D3D3"); // Light grey fallback
+          weekRange.setFontColor("#000000");
+          weekRange.setFontWeight("normal");
+        }
+        weekRange.setFontSize(10); // Set font size for weekly header
+      }
+      i = endIdx + 1;
+    } else if (dayOfWeek === 6 || dayOfWeek === 0) { // Weekend block
+      // Merge Sat+Sun if both exist, otherwise just one cell
+      let startCol = dailyDateToSheetColMap.get(dateIso);
+      let endIdx = i;
+      while (
+        endIdx + 1 < sortedDailyDateKeys.length &&
+        (new Date(sortedDailyDateKeys[endIdx + 1]).getDay() === 6 ||
+         new Date(sortedDailyDateKeys[endIdx + 1]).getDay() === 0)
+      ) {
+        endIdx++;
+      }
+      let endCol = dailyDateToSheetColMap.get(sortedDailyDateKeys[endIdx]);
+      let numColsToMerge = endCol - startCol + 1;
+      if (numColsToMerge > 0) {
+        const weekendRange = sheet.getRange(2, startCol, 1, numColsToMerge);
+        weekendRange.breakApart();
+        weekendRange.merge();
+        weekendRange.setValue(""); // No text
+        weekendRange.setHorizontalAlignment("center");
+        weekendRange.setVerticalAlignment("middle");
+        weekendRange.setBackground("#D3D3D3"); // Gray fill for weekends
+        weekendRange.setFontColor("#000000");
+        weekendRange.setFontWeight("normal");
+        weekendRange.setFontSize(10);
+      }
+      i = endIdx + 1;
+    } else {
+      i++;
     }
   }
 
