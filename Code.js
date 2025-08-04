@@ -44,7 +44,6 @@ function getTermsData(sheet) {
   const nameCol = headerRow.indexOf("Name");
   const startCol = headerRow.indexOf("Start Date");
   const endCol = headerRow.indexOf("End Date");
-  const colorCol = headerRow.indexOf("Color");
 
   if (nameCol === -1 || startCol === -1 || endCol === -1) {
     Logger.log("Error: Missing one or more required columns (Name, Start Date, End Date) in the 'Terms' sheet.");
@@ -52,11 +51,23 @@ function getTermsData(sheet) {
     return [];
   }
 
-  dataRows.forEach(row => {
+  dataRows.forEach((row, rowIndex) => {
     const name = row[nameCol];
     let startDate = row[startCol];
     let endDate = row[endCol];
-    const color = colorCol !== -1 ? row[colorCol] : "#2f75b5"; // Default color if not specified
+    
+    // Get the background color from the term name cell
+    const nameCell = sheet.getRange(rowIndex + 2, nameCol + 1); // +2 because rowIndex is 0-based and we skip header, +1 because sheet columns are 1-based
+    const backgroundColor = nameCell.getBackground();
+    
+    // Convert Google Sheets color to hex if needed
+    let color = backgroundColor;
+    if (backgroundColor && backgroundColor !== '#ffffff' && backgroundColor !== '#FFFFFF') {
+      color = backgroundColor;
+    } else {
+      // Default color if no background is set
+      color = getTermColor(name);
+    }
 
     // Convert date strings to Date objects if they're strings
     if (typeof startDate === 'string') {
@@ -102,7 +113,7 @@ function getTerms() {
     return getTermsData(termsSheet);
   } else {
     Logger.log("Error: Terms sheet not found.");
-    Browser.msgBox("Error", `Terms sheet '${SOURCE_SHEET_NAME_TERMS}' not found. Please create a Terms sheet with columns: Name, Start Date, End Date, Color.`, Browser.Buttons.OK);
+    Browser.msgBox("Error", `Terms sheet '${SOURCE_SHEET_NAME_TERMS}' not found. Please create a Terms sheet with columns: Name, Start Date, End Date. Set the background color of the Name cells to define term colors.`, Browser.Buttons.OK);
     return [];
   }
 }
