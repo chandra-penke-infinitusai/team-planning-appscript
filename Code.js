@@ -50,10 +50,10 @@ const TERMS_DATA = [
  */
 function getStartOfWeek(date) {
   const d = new Date(date);
-  const day = d.getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
+  const day = d.getUTCDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
   // Adjust to Monday. If Sunday (0), subtract 6 days. Otherwise, subtract day - 1.
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.getFullYear(), d.getMonth(), diff);
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), diff);
 }
 
 /**
@@ -64,7 +64,7 @@ function getStartOfWeek(date) {
 function getEndOfWeek(date) {
   const startOfWeek = getStartOfWeek(date);
   const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6); // Add 6 days to Monday to get Sunday
+  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6); // Add 6 days to Monday to get Sunday
   return endOfWeek;
 }
 
@@ -83,14 +83,11 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   const dailyDateToSheetColMap = new Map(); // Maps YYYY-MM-DD to its sheet column index
   let currentSheetColIndex = firstFixedColumnIndex + 1; // Current column for daily data (starts after fixed column)
 
-  let firstChartDate = getStartOfWeek(minOverallDate);
-  let lastChartDate = getEndOfWeek(maxOverallDate);
-
-  let currentDate = new Date(firstChartDate);
-  while (currentDate <= lastChartDate) {
+  let currentDate = new Date(minOverallDate);
+  while (currentDate <= maxOverallDate) {
     dailyDateToSheetColMap.set(currentDate.toISOString().slice(0, 10), currentSheetColIndex);
     currentSheetColIndex++;
-    currentDate.setDate(currentDate.getDate() + 1); // Move to the next day
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1); // Move to the next day
   }
 
   const totalDataColumns = currentSheetColIndex - (firstFixedColumnIndex + 1); // Number of actual daily data columns
@@ -170,7 +167,7 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
   while (i < sortedDailyDateKeys.length) {
     const dateIso = sortedDailyDateKeys[i];
     const dayDate = new Date(dateIso);
-    const dayOfWeek = dayDate.getDay();
+    const dayOfWeek = dayDate.getUTCDay();
 
     if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Weekdays block
       const startCol = dailyDateToSheetColMap.get(dateIso);
@@ -184,9 +181,14 @@ function generateTimelineHeaders(sheet, minOverallDate, maxOverallDate, firstFix
         // Label with week range
         const weekStartDate = new Date(sortedDailyDateKeys[i]);
         const weekEndDate = new Date(sortedDailyDateKeys[endIdx]);
+        // Format using UTC
+        function formatUTCMMDD(date) {
+          const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+          const dd = String(date.getUTCDate()).padStart(2, '0');
+          return mm + '/' + dd;
+        }
         const weekHeaderString =
-          Utilities.formatDate(weekStartDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd") + "-" +
-          Utilities.formatDate(weekEndDate, spreadsheet.getSpreadsheetTimeZone(), "MM/dd");
+          formatUTCMMDD(weekStartDate) + "-" + formatUTCMMDD(weekEndDate);
         weekRange.setValue(weekHeaderString);
         weekRange.setHorizontalAlignment("center");
         weekRange.setVerticalAlignment("middle");
@@ -413,17 +415,12 @@ function updatePeopleTimeline(sourceSheetName, destinationSheetName) {
     let endDate = new Date(row[endColPeople]);
     const summary = row[summaryColPeople];
 
-    if (!isNaN(startDate.getTime())) startDate.setHours(0, 0, 0, 0);
-    if (!isNaN(endDate.getTime())) endDate.setHours(0, 0, 0, 0);
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      Logger.log(`Warning: Still missing valid dates for project key '${jiraKeyFromPeople}' by '${person}'. Skipping this row.`);
-      return;
-    }
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
 
     if (endDate < startDate) {
       Logger.log(`Warning: End date is before start date for project key '${jiraKeyFromPeople}' by '${person}'. Adjusting end date to start date.`);
-      endDate.setDate(startDate.getDate());
+      endDate.setUTCDate(startDate.getUTCDate());
     }
 
     if (startDate < minOverallTimelineDate) {
@@ -661,7 +658,7 @@ function getMilestoneData(sheet) {
 
     if (endDate < startDate) {
       Logger.log(`Warning: Milestone '${name}' end date is before start date. Adjusting end date to start date.`);
-      endDate.setDate(startDate.getDate());
+      endDate.setUTCDate(startDate.getUTCDate());
     }
 
     milestones.push({
